@@ -1,0 +1,39 @@
+# CMake / build products
+/build/
+/build-*/
+/cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+
+# Native build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+core
+core.*
+
+# Fuzz artifacts
+crash-*
+leak-*
+timeout-*
+slow-unit-*
+*.profraw
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+*.swp
+*~
+
+# Local runtime artifacts
+.history
+*.log
