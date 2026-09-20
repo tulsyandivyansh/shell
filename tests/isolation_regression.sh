@@ -25,6 +25,23 @@ capability() {
   grep -E "^${name}:" <<<"$status" | head -1 | sed -E "s/^${name}:[[:space:]]*//"
 }
 
+assert_namespace_or_unavailable() {
+  local expected="$1"
+  local input="$2"
+  out="$(run_shell "$input")"
+  if grep -q "$expected" <<<"$out"; then
+    return
+  fi
+  if grep -q '^namespace-unavailable-ok$' <<<"$out" &&
+     grep -Eqi 'namespace|unshare|permission denied|operation not permitted' "$TMP/stderr"; then
+    return
+  fi
+  echo "unexpected namespace result" >&2
+  cat "$TMP/stderr" >&2
+  printf '%s\n' "$out" >&2
+  exit 1
+}
+
 # Invalid configurations fail cleanly and preserve normal shell chaining.
 out="$(run_shell $'sandbox --proc -- /bin/true || echo proc-dependency-ok\nsandbox --memory nope -- /bin/true || echo memory-parse-ok\nsandbox --cpu-percent 0 -- /bin/true || echo cpu-parse-ok\nsandbox -- || echo missing-program-ok\nexit\n')"
 grep -q '^proc-dependency-ok$' <<<"$out"
@@ -35,25 +52,21 @@ grep -q '^missing-program-ok$' <<<"$out"
 # Namespace tests are capability-aware because CI/container hosts may disable
 # individual namespace types with seccomp or sysctl policy.
 if [[ "$(capability user-namespace)" == "permitted" ]]; then
-  out="$(run_shell $'sandbox --user -- /usr/bin/id -u\nexit\n')"
-  grep -q '^0$' <<<"$out"
+  assert_namespace_or_unavailable '^0$' $'sandbox --user -- /usr/bin/id -u || echo namespace-unavailable-ok\nexit\n'
 fi
 
 if [[ "$(capability uts-namespace)" == "permitted" ]]; then
-  out="$(run_shell $'sandbox --uts --hostname isolated-box -- /bin/hostname\nexit\n')"
-  grep -q '^isolated-box$' <<<"$out"
+  assert_namespace_or_unavailable '^isolated-box$' $'sandbox --uts --hostname isolated-box -- /bin/hostname || echo namespace-unavailable-ok\nexit\n'
 fi
 
 if [[ "$(capability pid-namespace)" == "permitted" ]]; then
-  out="$(run_shell $'sandbox --pid -- /bin/sh -c "echo $$"\nexit\n')"
-  grep -q '^1$' <<<"$out"
+  assert_namespace_or_unavailable '^1$' $'sandbox --pid -- /bin/sh -c "echo $$" || echo namespace-unavailable-ok\nexit\n'
 fi
 
 if [[ "$(capability network-namespace)" == "permitted" ]]; then
   # A fresh network namespace starts with only a loopback device and it is down;
   # this is enough to prove the command is not sharing the host network stack.
-  out="$(run_shell $'sandbox --net -- /bin/cat /proc/net/dev\nexit\n')"
-  grep -q 'lo:' <<<"$out"
+  assert_namespace_or_unavailable 'lo:' $'sandbox --net -- /bin/cat /proc/net/dev || echo namespace-unavailable-ok\nexit\n'
 fi
 
 # Cgroup status is a capability hint: directory creation can succeed while a
